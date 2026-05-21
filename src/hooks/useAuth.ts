@@ -19,11 +19,9 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setState({ user: session?.user ?? null, session, loading: false })
     })
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setState({ user: session?.user ?? null, session, loading: false })
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
@@ -53,8 +51,7 @@ export function useAuth() {
   }, [])
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    await supabase.auth.signOut()
   }, [])
 
   const isBiometricAvailable = useCallback(async (): Promise<boolean> => {
@@ -68,17 +65,11 @@ export function useAuth() {
 
   const registerBiometric = useCallback(async (userId: string): Promise<boolean> => {
     try {
-      const available = await isBiometricAvailable()
-      if (!available) throw new Error('Biometría no disponible en este dispositivo')
-
       const challenge = crypto.getRandomValues(new Uint8Array(32))
       const credential = await navigator.credentials.create({
         publicKey: {
           challenge,
-          rp: {
-            name: 'PresupuestoGo',
-            id: window.location.hostname,
-          },
+          rp: { name: 'PresupuestoGo', id: window.location.hostname },
           user: {
             id: new TextEncoder().encode(userId),
             name: userId,
@@ -97,56 +88,48 @@ export function useAuth() {
         },
       }) as PublicKeyCredential
 
-      if (!credential) throw new Error('No se pudo registrar la biometría')
+      if (!credential) return false
 
       const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)))
-      const { error } = await supabase
-        .from('profiles')
-        .update({ biometric_enabled: true })
-        .eq('id', userId)
-
-      if (error) throw error
-
       localStorage.setItem('presupuestogo_biometric_id', credentialId)
       localStorage.setItem('presupuestogo_biometric_user', userId)
 
+      await supabase.from('profiles').update({ biometric_enabled: true }).eq('id', userId)
       return true
-    } catch (err) {
-      console.error('Error registrando biometría:', err)
+    } catch {
       return false
     }
-  }, [isBiometricAvailable])
+  }, [])
 
   const signInWithBiometric = useCallback(async (): Promise<boolean> => {
     try {
-      const available = await isBiometricAvailable()
-      if (!available) throw new Error('Biometría no disponible')
+      // Verificar si hay una credencial registrada en este dispositivo
+      const credentialId = localStorage.getItem('presupuestogo_biometric_id')
+      if (!credentialId) throw new Error('No hay biometría registrada')
 
       const challenge = crypto.getRandomValues(new Uint8Array(32))
+      const rawId = Uint8Array.from(atob(credentialId), c => c.charCodeAt(0))
 
-      // Fix para iOS: allowCredentials vacío activa Face ID automáticamente
       await navigator.credentials.get({
         publicKey: {
           challenge,
           timeout: 60000,
           userVerification: 'required',
           rpId: window.location.hostname,
-          allowCredentials: [],
+          allowCredentials: [{ type: 'public-key', id: rawId }],
         },
       })
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Sesión expirada — inicia sesión con contraseña')
-
+      if (!session) throw new Error('Sesión expirada')
       return true
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido'
-      if (message.includes('cancelled') || message.includes('NotAllowedError')) {
-        return false
-      }
+      const message = err instanceof Error ? err.message : ''
+      if (message.includes('No hay biometría')) throw err
+      if (message.includes('cancelled') || message.includes('NotAllowed')) return false
       throw err
     }
-  }, [isBiometricAvailable])
+  }, [])
 
   return {
     ...state,
