@@ -8,6 +8,44 @@ interface AuthState {
   loading: boolean
 }
 
+// Encriptar texto con una clave
+async function encryptData(data: string, key: CryptoKey): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const encoded = new TextEncoder().encode(data)
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded)
+  const combined = new Uint8Array(iv.length + encrypted.byteLength)
+  combined.set(iv)
+  combined.set(new Uint8Array(encrypted), iv.length)
+  return btoa(String.fromCharCode(...combined))
+}
+
+// Desencriptar texto con una clave
+async function decryptData(data: string, key: CryptoKey): Promise<string> {
+  const combined = Uint8Array.from(atob(data), c => c.charCodeAt(0))
+  const iv = combined.slice(0, 12)
+  const encrypted = combined.slice(12)
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted)
+  return new TextDecoder().decode(decrypted)
+}
+
+// Generar clave AES desde un credentialId (identificador único del dispositivo)
+async function deriveKey(credentialId: string): Promise<CryptoKey> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(credentialId.slice(0, 32).padEnd(32, '0')),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  )
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: new TextEncoder().encode('presupuestogo'), iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
+}
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -63,6 +101,7 @@ export function useAuth() {
     }
   }, [])
 
+  // Registrar Face ID y guardar credenciales encriptadas
   const registerBiometric = useCallback(async (userId: string): Promise<boolean> => {
     try {
       const challenge = crypto.getRandomValues(new Uint8Array(32))
@@ -92,12 +131,14 @@ export function useAuth() {
 
       const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)))
       localStorage.setItem('presupuestogo_biometric_id', credentialId)
-      localStorage.setItem('presupuestogo_biometric_user', userId)
 
-      // Guardar también el refresh token para renovar sesión después
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.refresh_token) {
-        localStorage.setItem('presupuestogo_refresh_token', session.refresh_token)
+      // Encriptar y guardar las credenciales del usuario
+      const storedCreds = localStorage.getItem('presupuestogo_temp_creds')
+      if (storedCreds) {
+        const key = await deriveKey(credentialId)
+        const encrypted = await encryptData(storedCreds, key)
+        localStorage.setItem('presupuestogo_encrypted_creds', encrypted)
+        localStorage.removeItem('presupuestogo_temp_creds')
       }
 
       await supabase.from('profiles').update({ biometric_enabled: true }).eq('id', userId)
@@ -107,10 +148,15 @@ export function useAuth() {
     }
   }, [])
 
+  // Iniciar sesión con Face ID desencriptando las credenciales
   const signInWithBiometric = useCallback(async (): Promise<boolean> => {
     try {
       const credentialId = localStorage.getItem('presupuestogo_biometric_id')
-      if (!credentialId) throw new Error('No hay biometría registrada')
+      const encryptedCreds = localStorage.getItem('presupuestogo_encrypted_creds')
+
+      if (!credentialId || !encryptedCreds) {
+        throw new Error('No hay biometría registrada. Actívala en Configuración.')
+      }
 
       const challenge = crypto.getRandomValues(new Uint8Array(32))
       const rawId = Uint8Array.from(atob(credentialId), c => c.charCodeAt(0))
@@ -126,28 +172,26 @@ export function useAuth() {
         },
       })
 
-      // Face ID exitoso - intentar renovar sesión con refresh token
-      const refreshToken = localStorage.getItem('presupuestogo_refresh_token')
-      if (refreshToken) {
-        const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken })
-        if (!error && data.session) {
-          // Guardar el nuevo refresh token
-          localStorage.setItem('presupuestogo_refresh_token', data.session.refresh_token)
-          return true
-        }
-      }
+      // Face ID exitoso - desencriptar credenciales e iniciar sesión
+      const key = await deriveKey(credentialId)
+      const decrypted = await decryptData(encryptedCreds, key)
+      const { email, password } = JSON.parse(decrypted)
 
-      // Si no hay refresh token o expiró, verificar sesión existente
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) return true
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw new Error('Error al iniciar sesión. Reactiva Face ID en Configuración.')
 
-      throw new Error('Sesión expirada. Inicia sesión con Google o correo primero.')
+      return true
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : ''
-      if (message.includes('No hay biometría') || message.includes('Sesión expirada')) throw err
+      if (message.includes('No hay biometría') || message.includes('Error al iniciar')) throw err
       if (message.includes('cancelled') || message.includes('NotAllowed')) return false
       throw err
     }
+  }, [])
+
+  // Guardar credenciales temporalmente antes de registrar Face ID
+  const saveTempCredentials = useCallback((email: string, password: string) => {
+    localStorage.setItem('presupuestogo_temp_creds', JSON.stringify({ email, password }))
   }, [])
 
   return {
@@ -159,5 +203,6 @@ export function useAuth() {
     isBiometricAvailable,
     registerBiometric,
     signInWithBiometric,
+    saveTempCredentials,
   }
 }
