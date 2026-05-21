@@ -11,6 +11,7 @@ import BalancePage from './BalancePage'
 import RemindersPage from './RemindersPage'
 import CalculatorsPage from './CalculatorsPage'
 import ReportsPage from './ReportsPage'
+import SettingsPage from './SettingsPage'
 
 const navItems = [
   { path:'/', label:'Dashboard', icon:'📊' },
@@ -23,10 +24,11 @@ const navItems = [
   { path:'/recordatorios', label:'Recordatorios', icon:'🔔' },
   { path:'/calculadoras', label:'Calculadoras', icon:'🧮' },
   { path:'/informes', label:'Informes', icon:'📈' },
+  { path:'/ajustes', label:'Ajustes', icon:'⚙️' },
 ]
 
 const titles: Record<string,string> = {
-  '/':'Dashboard','/movimientos':'Movimientos','/cuentas':'Cuentas',
+  '/':'Dashboard','/ajustes':'Ajustes','/movimientos':'Movimientos','/cuentas':'Cuentas',
   '/presupuesto':'Presupuesto','/planificador':'Planificador',
   '/objetivos':'Objetivos','/balance':'Balance','/recordatorios':'Recordatorios',
   '/calculadoras':'Calculadoras','/informes':'Informes',
@@ -88,6 +90,7 @@ export default function AppLayout() {
             <Route path="/recordatorios" element={<RemindersPage />} />
             <Route path="/calculadoras" element={<CalculatorsPage />} />
             <Route path="/informes" element={<ReportsPage />} />
+            <Route path="/ajustes" element={<SettingsPage />} />
             <Route path="*" element={<DashboardPage />} />
           </Routes>
         </div>
