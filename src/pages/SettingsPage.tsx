@@ -3,21 +3,34 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 
 export default function SettingsPage() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, registerBiometric, isBiometricAvailable } = useAuth()
   const [apiKey, setApiKey] = useState('')
   const [copied, setCopied] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [profile, setProfile] = useState({ full_name:'', currency:'CRC' })
   const [saving, setSaving] = useState(false)
+  const [biometricEnabled, setBiometricEnabled] = useState(false)
+  const [biometricSupported, setBiometricSupported] = useState(false)
+  const [registeringBio, setRegisteringBio] = useState(false)
+  const [bioMsg, setBioMsg] = useState('')
 
   useEffect(() => {
     if (user?.id) {
       supabase.from('profiles').select('*').eq('id', user.id).single()
-        .then(({ data }) => { if (data) setProfile({ full_name: data.full_name || '', currency: data.currency || 'CRC' }) })
+        .then(({ data }) => {
+          if (data) setProfile({ full_name: data.full_name || '', currency: data.currency || 'CRC' })
+        })
       const stored = localStorage.getItem('pgk_api_key')
       if (stored) setApiKey(stored)
+
+      // Verificar si ya tiene biometría registrada en este dispositivo
+      const bioId = localStorage.getItem('presupuestogo_biometric_id')
+      setBiometricEnabled(!!bioId)
+
+      // Verificar si el dispositivo soporta biometría
+      isBiometricAvailable().then(setBiometricSupported)
     }
-  }, [user])
+  }, [user, isBiometricAvailable])
 
   const copy = () => {
     navigator.clipboard.writeText(apiKey)
@@ -42,6 +55,31 @@ export default function SettingsPage() {
     setSaving(true)
     await supabase.from('profiles').update({ full_name: profile.full_name, currency: profile.currency }).eq('id', user!.id)
     setSaving(false)
+  }
+
+  const handleRegisterBiometric = async () => {
+    setRegisteringBio(true)
+    setBioMsg('')
+    try {
+      const ok = await registerBiometric(user!.id)
+      if (ok) {
+        setBiometricEnabled(true)
+        setBioMsg('Face ID activado correctamente!')
+      } else {
+        setBioMsg('No se pudo activar. Intenta de nuevo.')
+      }
+    } catch {
+      setBioMsg('Error al activar Face ID.')
+    } finally {
+      setRegisteringBio(false)
+    }
+  }
+
+  const handleDisableBiometric = () => {
+    localStorage.removeItem('presupuestogo_biometric_id')
+    localStorage.removeItem('presupuestogo_biometric_user')
+    setBiometricEnabled(false)
+    setBioMsg('Face ID desactivado.')
   }
 
   const inp: React.CSSProperties = { width:'100%', background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, color:'var(--text)', padding:'8px 11px', fontSize:13, outline:'none' }
@@ -81,7 +119,6 @@ export default function SettingsPage() {
           <div style={{ fontSize:12, color:'var(--text2)', marginBottom:12 }}>
             Genera una clave permanente para el atajo de iOS. Esta clave no expira.
           </div>
-
           {apiKey ? (
             <>
               <div style={{ background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, padding:'10px 12px', fontSize:10, color:'var(--green)', wordBreak:'break-all' as const, marginBottom:10, fontFamily:'monospace' }}>
@@ -95,39 +132,4 @@ export default function SettingsPage() {
               </button>
             </>
           ) : (
-            <button onClick={generateKey} disabled={generating} style={{ width:'100%', padding:12, background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, opacity:generating?0.7:1 }}>
-              {generating ? 'Generando...' : 'Generar API Key'}
-            </button>
-          )}
-
-          <div style={{ marginTop:12, padding:10, background:'var(--green-bg)', border:'1px solid var(--green-dim)', borderRadius:8 }}>
-            <div style={{ fontSize:11, color:'var(--green)', fontWeight:700 }}>Esta clave no expira</div>
-            <div style={{ fontSize:11, color:'var(--text2)', marginTop:3 }}>Configurala una sola vez en el atajo de iOS y funcionara siempre.</div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16, marginBottom:12 }}>
-        <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', marginBottom:12 }}>Instalar como app</div>
-        <div style={{ fontSize:12, color:'var(--text2)', marginBottom:10 }}>Agrega PresupuestoGo a tu pantalla de inicio para abrirla como una app nativa.</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-          {[
-            { step:'1', text:'Abre presupuestogo.vercel.app en Safari' },
-            { step:'2', text:'Toca el boton compartir (cuadrado con flecha)' },
-            { step:'3', text:'Selecciona Agregar a pantalla de inicio' },
-            { step:'4', text:'Ponle nombre PresupuestoGo y toca Agregar' },
-          ].map(s => (
-            <div key={s.step} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'var(--bg3)', borderRadius:8 }}>
-              <div style={{ width:24, height:24, borderRadius:'50%', background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#fff', flexShrink:0 }}>{s.step}</div>
-              <span style={{ fontSize:12 }}>{s.text}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <button onClick={() => signOut()} style={{ width:'100%', padding:12, background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:10, color:'var(--red)', cursor:'pointer', fontSize:14, fontWeight:700 }}>
-        Cerrar sesion
-      </button>
-    </div>
-  )
-}
+            <button onClick={generateKey} disabled={generating} style={{ width:'100%', padding:12, background:'var(--accent)', border:'none',
