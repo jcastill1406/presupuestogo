@@ -4,25 +4,38 @@ import { supabase } from '../lib/supabase'
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth()
-  const [token, setToken] = useState('')
+  const [apiKey, setApiKey] = useState('')
   const [copied, setCopied] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [profile, setProfile] = useState({ full_name:'', currency:'CRC' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setToken(data.session?.access_token || '')
-    })
     if (user?.id) {
       supabase.from('profiles').select('*').eq('id', user.id).single()
         .then(({ data }) => { if (data) setProfile({ full_name: data.full_name || '', currency: data.currency || 'CRC' }) })
+      const stored = localStorage.getItem('pgk_api_key')
+      if (stored) setApiKey(stored)
     }
   }, [user])
 
   const copy = () => {
-    navigator.clipboard.writeText(token)
+    navigator.clipboard.writeText(apiKey)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const generateKey = async () => {
+    setGenerating(true)
+    const { data, error } = await supabase.rpc('generate_api_key', {
+      p_user_id: user!.id,
+      p_name: 'SINPE iOS'
+    })
+    if (!error && data) {
+      setApiKey(data)
+      localStorage.setItem('pgk_api_key', data)
+    }
+    setGenerating(false)
   }
 
   const save = async () => {
@@ -64,17 +77,32 @@ export default function SettingsPage() {
         </div>
 
         <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', marginBottom:12 }}>Token SINPE</div>
-          <div style={{ fontSize:12, color:'var(--text2)', marginBottom:10 }}>Usa este token para configurar el atajo de iOS que registra tus SINPE automaticamente.</div>
-          <div style={{ background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, padding:'10px 12px', fontSize:10, color:'var(--text3)', wordBreak:'break-all' as const, marginBottom:10, maxHeight:80, overflow:'hidden' }}>
-            {token ? token.slice(0,40) + '...' : 'Cargando...'}
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', marginBottom:12 }}>API Key SINPE</div>
+          <div style={{ fontSize:12, color:'var(--text2)', marginBottom:12 }}>
+            Genera una clave permanente para el atajo de iOS. Esta clave no expira.
           </div>
-          <button onClick={copy} style={{ width:'100%', padding:9, background: copied?'var(--green-bg)':'var(--bg3)', border:`1px solid ${copied?'var(--green)':'var(--border2)'}`, borderRadius:8, color: copied?'var(--green)':'var(--text2)', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-            {copied ? 'Copiado!' : 'Copiar token completo'}
-          </button>
-          <div style={{ marginTop:10, padding:10, background:'var(--amber-bg)', border:'1px solid var(--amber)', borderRadius:8 }}>
-            <div style={{ fontSize:11, color:'var(--amber)', fontWeight:700 }}>Importante</div>
-            <div style={{ fontSize:11, color:'var(--text2)', marginTop:3 }}>Este token expira cada hora. Si el atajo deja de funcionar, cópialo de nuevo aqui.</div>
+
+          {apiKey ? (
+            <>
+              <div style={{ background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, padding:'10px 12px', fontSize:10, color:'var(--green)', wordBreak:'break-all' as const, marginBottom:10, fontFamily:'monospace' }}>
+                {apiKey}
+              </div>
+              <button onClick={copy} style={{ width:'100%', padding:9, background: copied?'var(--green-bg)':'var(--bg3)', border:`1px solid ${copied?'var(--green)':'var(--border2)'}`, borderRadius:8, color: copied?'var(--green)':'var(--text2)', cursor:'pointer', fontSize:13, fontWeight:700, marginBottom:8 }}>
+                {copied ? 'Copiado!' : 'Copiar API Key'}
+              </button>
+              <button onClick={generateKey} disabled={generating} style={{ width:'100%', padding:9, background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:8, color:'var(--red)', cursor:'pointer', fontSize:12, fontWeight:600, opacity:generating?0.7:1 }}>
+                {generating ? 'Generando...' : 'Regenerar clave'}
+              </button>
+            </>
+          ) : (
+            <button onClick={generateKey} disabled={generating} style={{ width:'100%', padding:12, background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, opacity:generating?0.7:1 }}>
+              {generating ? 'Generando...' : 'Generar API Key'}
+            </button>
+          )}
+
+          <div style={{ marginTop:12, padding:10, background:'var(--green-bg)', border:'1px solid var(--green-dim)', borderRadius:8 }}>
+            <div style={{ fontSize:11, color:'var(--green)', fontWeight:700 }}>Esta clave no expira</div>
+            <div style={{ fontSize:11, color:'var(--text2)', marginTop:3 }}>Configurala una sola vez en el atajo de iOS y funcionara siempre.</div>
           </div>
         </div>
       </div>

@@ -11,19 +11,23 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sms_text, user_token } = await req.json()
+    const { sms_text, api_key } = await req.json()
 
-    // Verificar el usuario con su token
-    const { data: { user }, error: authError } = await supabase.auth.getUser(user_token)
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401 })
+    if (!api_key) {
+      return new Response(JSON.stringify({ error: 'API key requerida' }), { status: 401 })
+    }
+
+    // Verificar API key permanente
+    const { data: userId, error: keyError } = await supabase
+      .rpc('verify_api_key', { p_key: api_key })
+
+    if (keyError || !userId) {
+      return new Response(JSON.stringify({ error: 'API key invalida' }), { status: 401 })
     }
 
     // Parsear SMS de BAC SINPE
-    // Formato recibido: "SINPE Móvil: Recibió ₡15,000.00 de JUAN PEREZ. Ref: 123456"
-    // Formato enviado:  "SINPE Móvil: Envió ₡15,000.00 a JUAN PEREZ. Ref: 123456"
-    const receivedMatch = sms_text.match(/Recibió\s+[₡¢]?([\d,]+\.?\d*)\s+de\s+([^.]+)/i)
-    const sentMatch     = sms_text.match(/Envió\s+[₡¢]?([\d,]+\.?\d*)\s+a\s+([^.]+)/i)
+    const receivedMatch = sms_text.match(/Recib[ióio]+\s+[₡¢]?([\d,]+\.?\d*)\s+de\s+([^.]+)/i)
+    const sentMatch     = sms_text.match(/Envi[óo]+\s+[₡¢]?([\d,]+\.?\d*)\s+a\s+([^.]+)/i)
 
     let amount: number
     let description: string
@@ -41,13 +45,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'SMS no reconocido', sms: sms_text }), { status: 400 })
     }
 
-    // Registrar la transacción
     const { data, error } = await supabase.rpc('create_transaction_from_sinpe', {
-      p_user_id:    user.id,
-      p_amount:     amount,
+      p_user_id:     userId,
+      p_amount:      amount,
       p_description: description,
-      p_type:       type,
-      p_date:       new Date().toISOString().split('T')[0],
+      p_type:        type,
+      p_date:        new Date().toISOString().split('T')[0],
     })
 
     if (error) throw error
