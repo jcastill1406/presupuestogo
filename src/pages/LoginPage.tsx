@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
 export default function LoginPage() {
-  const { signInWithEmail, signInWithGoogle, signUp, signInWithBiometric, isBiometricAvailable } = useAuth()
+  const { signInWithEmail, signInWithGoogle, signUp, signInWithBiometric, isBiometricAvailable, saveTempCredentials } = useAuth()
   const navigate = useNavigate()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -20,6 +20,8 @@ export default function LoginPage() {
     try {
       if (mode === 'login') {
         await signInWithEmail(email, password)
+        // Guardar credenciales para Face ID
+        saveTempCredentials(email, password)
         navigate('/')
       } else {
         await signUp(email, password, name)
@@ -50,8 +52,8 @@ export default function LoginPage() {
       const ok = await signInWithBiometric()
       if (ok) navigate('/')
       else setError('Verificación cancelada')
-    } catch {
-      setError('Sesión expirada. Inicia sesión con correo primero.')
+    } catch (err: any) {
+      setError(err.message || 'Error al verificar')
     } finally {
       setBioScanning(false)
     }
