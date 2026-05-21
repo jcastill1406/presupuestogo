@@ -94,6 +94,12 @@ export function useAuth() {
       localStorage.setItem('presupuestogo_biometric_id', credentialId)
       localStorage.setItem('presupuestogo_biometric_user', userId)
 
+      // Guardar también el refresh token para renovar sesión después
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.refresh_token) {
+        localStorage.setItem('presupuestogo_refresh_token', session.refresh_token)
+      }
+
       await supabase.from('profiles').update({ biometric_enabled: true }).eq('id', userId)
       return true
     } catch {
@@ -103,13 +109,13 @@ export function useAuth() {
 
   const signInWithBiometric = useCallback(async (): Promise<boolean> => {
     try {
-      // Verificar si hay una credencial registrada en este dispositivo
       const credentialId = localStorage.getItem('presupuestogo_biometric_id')
       if (!credentialId) throw new Error('No hay biometría registrada')
 
       const challenge = crypto.getRandomValues(new Uint8Array(32))
       const rawId = Uint8Array.from(atob(credentialId), c => c.charCodeAt(0))
 
+      // Verificar con Face ID
       await navigator.credentials.get({
         publicKey: {
           challenge,
@@ -120,12 +126,25 @@ export function useAuth() {
         },
       })
 
+      // Face ID exitoso - intentar renovar sesión con refresh token
+      const refreshToken = localStorage.getItem('presupuestogo_refresh_token')
+      if (refreshToken) {
+        const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken })
+        if (!error && data.session) {
+          // Guardar el nuevo refresh token
+          localStorage.setItem('presupuestogo_refresh_token', data.session.refresh_token)
+          return true
+        }
+      }
+
+      // Si no hay refresh token o expiró, verificar sesión existente
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Sesión expirada')
-      return true
+      if (session) return true
+
+      throw new Error('Sesión expirada. Inicia sesión con Google o correo primero.')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : ''
-      if (message.includes('No hay biometría')) throw err
+      if (message.includes('No hay biometría') || message.includes('Sesión expirada')) throw err
       if (message.includes('cancelled') || message.includes('NotAllowed')) return false
       throw err
     }
