@@ -1,3 +1,4 @@
+import { supabase } from './lib/supabase'
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -23,8 +24,33 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 function AuthCallback() {
-  useEffect(() => { window.location.href = '/' }, [])
-  return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--text2)' }}>Iniciando sesión...</div>
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        window.location.href = '/'
+      } else {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (event === 'SIGNED_IN' && session) {
+            subscription.unsubscribe()
+            window.location.href = '/'
+          }
+        })
+        setTimeout(() => {
+          subscription.unsubscribe()
+          window.location.href = '/login'
+        }, 5000)
+      }
+    })
+  }, [])
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'var(--bg)' }}>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ width:48, height:48, background:'var(--accent)', borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px', fontSize:22 }}>💰</div>
+        <div style={{ color:'var(--text2)', fontSize:13 }}>Iniciando sesión con Google...</div>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
