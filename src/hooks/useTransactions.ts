@@ -9,32 +9,23 @@ export function useTransactions(userId: string | undefined, month: number, year:
   useEffect(() => {
     if (!userId) return
     fetchTransactions()
-
-    const sub = supabase
-      .channel('transactions')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
-        () => fetchTransactions()
-      ).subscribe()
-
-    return () => { supabase.removeChannel(sub) }
   }, [userId, month, year])
 
   async function fetchTransactions() {
     setLoading(true)
+
     const start = `${year}-${String(month).padStart(2, '0')}-01`
     const end = new Date(year, month, 0).toISOString().split('T')[0]
 
-    console.log('Fetching transactions:', { userId, start, end })
-
     const { data, error } = await supabase
       .from('transactions')
-      .select('*, account:accounts(name, type), category:categories(name, icon, color)')
+      .select('*')
       .eq('user_id', userId!)
       .gte('date', start)
       .lte('date', end)
       .order('date', { ascending: false })
 
-    console.log('Result:', { data, error, count: data?.length })
+    if (error) console.error('Error:', error)
 
     setTransactions(data ?? [])
     setLoading(false)
