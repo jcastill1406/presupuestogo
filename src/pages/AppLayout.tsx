@@ -12,11 +12,13 @@ import RemindersPage from './RemindersPage'
 import CalculatorsPage from './CalculatorsPage'
 import ReportsPage from './ReportsPage'
 import SettingsPage from './SettingsPage'
+import CategoriesPage from './CategoriesPage'
 
 const navItems = [
   { path:'/', label:'Dashboard', icon:'📊' },
   { path:'/movimientos', label:'Movimientos', icon:'💸' },
   { path:'/cuentas', label:'Cuentas', icon:'💳' },
+  { path:'/categorias', label:'Categorías', icon:'📂' },
   { path:'/presupuesto', label:'Presupuesto', icon:'🎯' },
   { path:'/planificador', label:'Planificador', icon:'📅' },
   { path:'/objetivos', label:'Objetivos', icon:'🏆' },
@@ -29,7 +31,7 @@ const navItems = [
 
 const titles: Record<string,string> = {
   '/':'Dashboard','/ajustes':'Ajustes','/movimientos':'Movimientos','/cuentas':'Cuentas',
-  '/presupuesto':'Presupuesto','/planificador':'Planificador',
+  '/categorias':'Categorías','/presupuesto':'Presupuesto','/planificador':'Planificador',
   '/objetivos':'Objetivos','/balance':'Balance','/recordatorios':'Recordatorios',
   '/calculadoras':'Calculadoras','/informes':'Informes',
 }
@@ -83,6 +85,7 @@ export default function AppLayout() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/movimientos" element={<TransactionsPage />} />
             <Route path="/cuentas" element={<AccountsPage />} />
+            <Route path="/categorias" element={<CategoriesPage />} />
             <Route path="/presupuesto" element={<BudgetPage />} />
             <Route path="/planificador" element={<PlannerPage />} />
             <Route path="/objetivos" element={<GoalsPage />} />
