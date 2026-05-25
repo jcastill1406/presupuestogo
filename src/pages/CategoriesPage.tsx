@@ -141,10 +141,13 @@ export default function CategoriesPage() {
     refetch()
   }
 
-  function CatCard({ c }: { c: any }) {
+function CatCard({ c }: { c: any }) {
+    const isEmoji = c.icon && /\p{Emoji}/u.test(c.icon)
+    const iconDisplay = isEmoji ? c.icon : '📂'
+    
     return (
       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, marginBottom:6 }}>
-        <div style={{ width:38, height:38, borderRadius:9, background:`${c.color}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>{c.icon}</div>
+        <div style={{ width:38, height:38, borderRadius:9, background:`${c.color || '#6366f1'}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>{iconDisplay}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:13, fontWeight:600 }}>{c.name}</div>
           <div style={{ fontSize:11, color:'var(--text3)' }}>{c.type === 'expense' ? 'Gasto' : c.type === 'income' ? 'Ingreso' : 'Ambos'}</div>
@@ -157,7 +160,7 @@ export default function CategoriesPage() {
               style={{ width:30, height:30, borderRadius:6, background:'var(--red-bg)', border:'1px solid var(--red)', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>🗑️</button>
           </div>
         )}
-        {c.is_system && <div style={{ fontSize:10, color:'var(--text3)', background:'var(--bg3)', padding:'2px 8px', borderRadius:4 }}>Sistema</div>}
+        {c.is_system && <div style={{ fontSize:10, color:'var(--text3)', background:'var(--bg3)', padding:'2px 8px', borderRadius:4, flexShrink:0 }}>Sistema</div>}
       </div>
     )
   }
