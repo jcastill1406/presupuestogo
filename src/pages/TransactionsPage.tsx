@@ -1,17 +1,67 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useTransactions } from '../hooks/useTransactions'
+import { useAccounts } from '../hooks/useAccounts'
+import { useCategories } from '../hooks/useCategories'
 import TransactionModal from './TransactionModal'
 import { supabase } from '../lib/supabase'
 import type { Transaction } from '../types/database'
 
 const CRC = (n: number) => '₡' + Math.round(n).toLocaleString('es-CR')
 
-function TransactionDetail({ t, onClose, onDelete }: { t: Transaction, onClose: () => void, onDelete: () => void }) {
+function TransactionDetail({ t, onClose, onDelete, onSaved, userId }: {
+  t: Transaction, onClose: () => void, onDelete: () => void, onSaved: () => void, userId: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const { accounts } = useAccounts(userId)
+  const { expenseCategories, incomeCategories } = useCategories(userId)
+  const categories = t.type === 'income' ? incomeCategories : expenseCategories
+
+  const [form, setForm] = useState({
+    amount: String(t.amount),
+    date: t.date,
+    description: t.description || '',
+    account_id: t.account_id || '',
+    category_id: t.category_id || '',
+    notes: t.notes || '',
+    location: t.location || '',
+    is_recurrent: t.is_recurrent || false,
+    is_ignored: t.is_ignored || false,
+  })
+
+  const set = (key: string, val: any) => setForm(prev => ({ ...prev, [key]: val }))
   const color = t.type === 'income' ? 'var(--green)' : t.type === 'transfer' ? 'var(--blue)' : 'var(--red)'
   const bgColor = t.type === 'income' ? 'var(--green-bg)' : t.type === 'transfer' ? 'var(--blue-bg)' : 'var(--red-bg)'
   const icon = t.type === 'income' ? '📈' : t.type === 'transfer' ? '🔄' : '📉'
   const typeLabel = t.type === 'income' ? 'Ingreso' : t.type === 'transfer' ? 'Transferencia' : 'Gasto'
+  const inp: React.CSSProperties = { width:'100%', background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, color:'var(--text)', padding:'8px 11px', fontSize:13, outline:'none', boxSizing:'border-box' }
+
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    try {
+      const { error } = await supabase.from('transactions').update({
+        amount: parseFloat(form.amount),
+        date: form.date,
+        description: form.description || null,
+        account_id: form.account_id || null,
+        category_id: form.category_id || null,
+        notes: form.notes || null,
+        location: form.location || null,
+        is_recurrent: form.is_recurrent,
+        is_ignored: form.is_ignored,
+      }).eq('id', t.id)
+      if (error) throw error
+      onSaved()
+      onClose()
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const row = (label: string, value: string | undefined | null) => value ? (
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
@@ -23,48 +73,108 @@ function TransactionDetail({ t, onClose, onDelete }: { t: Transaction, onClose: 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', display:'flex', alignItems:'flex-end', justifyContent:'center', zIndex:1000 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'12px 12px 0 0', width:'100%', maxWidth:520, maxHeight:'85vh', display:'flex', flexDirection:'column' }}>
+      <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'12px 12px 0 0', width:'100%', maxWidth:520, maxHeight:'90vh', display:'flex', flexDirection:'column' }}>
 
-        {/* Header */}
         <div style={{ padding:'16px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:34, height:34, borderRadius:9, background:bgColor, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>{icon}</div>
-          <div style={{ fontSize:14, fontWeight:700, flex:1 }}>Detalle del movimiento</div>
+          <div style={{ fontSize:14, fontWeight:700, flex:1 }}>{editing ? 'Editar movimiento' : 'Detalle del movimiento'}</div>
           <div onClick={onClose} style={{ cursor:'pointer', color:'var(--text3)', fontSize:22 }}>×</div>
         </div>
 
         <div style={{ padding:18, overflowY:'auto', flex:1 }}>
-
-          {/* Monto destacado */}
-          <div style={{ textAlign:'center', padding:'20px 0 24px', borderBottom:'1px solid var(--border)', marginBottom:8 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', marginBottom:6 }}>{typeLabel}</div>
-            <div style={{ fontSize:32, fontWeight:800, color }}>
-              {t.type === 'income' ? '+' : '-'}{CRC(t.amount)}
+          {editing ? (
+            /* Modo edición */
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Monto (₡)</label>
+                  <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} style={inp} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Fecha</label>
+                  <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={inp} />
+                </div>
+              </div>
+              <div style={{ marginBottom:10 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Descripción</label>
+                <input value={form.description} onChange={e => set('description', e.target.value)} placeholder="Descripción" style={inp} />
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Cuenta</label>
+                  <select value={form.account_id} onChange={e => set('account_id', e.target.value)} style={{ ...inp, appearance:'none' }}>
+                    <option value="">Sin cuenta</option>
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Categoría</label>
+                  <select value={form.category_id} onChange={e => set('category_id', e.target.value)} style={{ ...inp, appearance:'none' }}>
+                    <option value="">Sin categoría</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom:10 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Lugar</label>
+                <input value={form.location} onChange={e => set('location', e.target.value)} placeholder="Lugar" style={inp} />
+              </div>
+              <div style={{ marginBottom:12 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Observación</label>
+                <textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Notas" style={{ ...inp, minHeight:60, resize:'vertical' }} />
+              </div>
+              {[
+                { label:'Recurrente', key:'is_recurrent' },
+                { label:'Ignorar en balance', key:'is_ignored' },
+              ].map(opt => (
+                <div key={opt.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 0' }}>
+                  <span style={{ fontSize:12, fontWeight:600 }}>{opt.label}</span>
+                  <div onClick={() => set(opt.key, !(form as any)[opt.key])}
+                    style={{ width:32, height:18, background:(form as any)[opt.key]?'var(--accent)':'var(--bg4)', borderRadius:9, position:'relative', cursor:'pointer', transition:'background .2s' }}>
+                    <div style={{ position:'absolute', width:13, height:13, background:'#fff', borderRadius:'50%', top:2.5, left:(form as any)[opt.key]?15:2.5, transition:'left .2s' }} />
+                  </div>
+                </div>
+              ))}
+              {error && <div style={{ marginTop:10, padding:'8px 12px', background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:8, fontSize:12, color:'var(--red)' }}>{error}</div>}
             </div>
-            <div style={{ fontSize:12, color:'var(--text3)', marginTop:4 }}>{t.date}</div>
-          </div>
-
-          {/* Detalles */}
-          <div style={{ marginTop:8 }}>
-            {row('Descripción', t.description)}
-            {row('Cuenta', t.account?.name)}
-            {row('Categoría', t.category?.name)}
-            {row('Lugar', t.location)}
-            {row('Observación', t.notes)}
-            {row('Referencia', t.labels?.length ? t.labels.join(', ') : null)}
-            {row('Recordatorio', t.remind_at)}
-            {t.is_recurrent && row('Recurrente', '✅ Sí')}
-            {t.is_ignored && row('Ignorado en balance', '👁️ Sí')}
-          </div>
+          ) : (
+            /* Modo detalle */
+            <div>
+              <div style={{ textAlign:'center', padding:'20px 0 24px', borderBottom:'1px solid var(--border)', marginBottom:8 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', marginBottom:6 }}>{typeLabel}</div>
+                <div style={{ fontSize:32, fontWeight:800, color }}>{t.type === 'income' ? '+' : '-'}{CRC(t.amount)}</div>
+                <div style={{ fontSize:12, color:'var(--text3)', marginTop:4 }}>{t.date}</div>
+              </div>
+              <div style={{ marginTop:8 }}>
+                {row('Descripción', t.description)}
+                {row('Cuenta', t.account?.name)}
+                {row('Categoría', t.category?.name)}
+                {row('Lugar', t.location)}
+                {row('Observación', t.notes)}
+                {row('Etiquetas', t.labels?.length ? t.labels.join(', ') : null)}
+                {row('Recordatorio', t.remind_at)}
+                {t.is_recurrent && row('Recurrente', '✅ Sí')}
+                {t.is_ignored && row('Ignorado en balance', '👁️ Sí')}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Footer */}
         <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:8 }}>
-          <button onClick={onDelete} style={{ flex:1, padding:'10px 0', background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:8, color:'var(--red)', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-            🗑️ Eliminar
-          </button>
-          <button onClick={onClose} style={{ flex:1, padding:'10px 0', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-            Cerrar
-          </button>
+          {editing ? (
+            <>
+              <button onClick={() => setEditing(false)} style={{ flex:1, padding:'10px 0', background:'var(--surface)', border:'1px solid var(--border2)', borderRadius:8, color:'var(--text)', cursor:'pointer', fontSize:13, fontWeight:600 }}>Cancelar</button>
+              <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'10px 0', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, opacity:saving?0.7:1 }}>
+                {saving ? 'Guardando...' : '💾 Guardar'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={onDelete} style={{ padding:'10px 14px', background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:8, color:'var(--red)', cursor:'pointer', fontSize:13, fontWeight:700 }}>🗑️</button>
+              <button onClick={() => setEditing(true)} style={{ flex:1, padding:'10px 0', background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, color:'var(--text)', cursor:'pointer', fontSize:13, fontWeight:700 }}>✏️ Editar</button>
+              <button onClick={onClose} style={{ flex:1, padding:'10px 0', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>Cerrar</button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -167,7 +277,15 @@ export default function TransactionsPage() {
       </div>
 
       {modal && <TransactionModal type={modal} onClose={() => setModal(null)} onSaved={refetch} />}
-      {detail && <TransactionDetail t={detail} onClose={() => setDetail(null)} onDelete={() => deleteTransaction(detail.id)} />}
+      {detail && (
+        <TransactionDetail
+          t={detail}
+          userId={user!.id}
+          onClose={() => setDetail(null)}
+          onDelete={() => deleteTransaction(detail.id)}
+          onSaved={refetch}
+        />
+      )}
     </div>
   )
 }
