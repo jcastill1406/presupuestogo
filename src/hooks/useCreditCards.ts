@@ -75,7 +75,6 @@ export function useCreditCards(userId: string | undefined) {
     fetchCards()
   }
 
-  // Calcular período actual de la tarjeta
   function getCurrentPeriod(card: CreditCard) {
     const today = new Date()
     const cutDay = card.cut_day
@@ -83,9 +82,84 @@ export function useCreditCards(userId: string | undefined) {
     let periodEnd: Date
 
     if (today.getDate() <= cutDay) {
-      // Antes del corte - período del mes anterior al actual
       periodEnd = new Date(today.getFullYear(), today.getMonth(), cutDay)
       periodStart = new Date(today.getFullYear(), today.getMonth() - 1, cutDay + 1)
     } else {
-      // Después del corte - período actual al próximo corte
-      periodStart = new Date(today.getFullYear(), today.getMon
+      periodStart = new Date(today.getFullYear(), today.getMonth(), cutDay + 1)
+      periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, cutDay)
+    }
+
+    return {
+      start: periodStart.toISOString().split('T')[0],
+      end: periodEnd.toISOString().split('T')[0],
+    }
+  }
+
+  function getNextPaymentDate(card: CreditCard) {
+    const today = new Date()
+    let paymentDate = new Date(today.getFullYear(), today.getMonth(), card.payment_day)
+    if (paymentDate <= today) {
+      paymentDate = new Date(today.getFullYear(), today.getMonth() + 1, card.payment_day)
+    }
+    return paymentDate.toISOString().split('T')[0]
+  }
+
+  async function getCardTransactions(cardId: string, periodStart: string, periodEnd: string) {
+    const { data } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('credit_card_id', cardId)
+      .gte('date', periodStart)
+      .lte('date', periodEnd)
+      .order('date', { ascending: false })
+    return data ?? []
+  }
+
+  async function registerPayment(
+    cardId: string,
+    amount: number,
+    paymentDate: string,
+    periodStart: string,
+    periodEnd: string,
+    notes?: string
+  ) {
+    const { data, error } = await supabase
+      .from('credit_card_payments')
+      .insert({
+        user_id: userId,
+        credit_card_id: cardId,
+        amount,
+        payment_date: paymentDate,
+        period_start: periodStart,
+        period_end: periodEnd,
+        notes: notes || null,
+      })
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  }
+
+  async function getCardPayments(cardId: string) {
+    const { data } = await supabase
+      .from('credit_card_payments')
+      .select('*')
+      .eq('credit_card_id', cardId)
+      .order('payment_date', { ascending: false })
+    return data ?? []
+  }
+
+  return {
+    cards,
+    loading,
+    createCard,
+    updateCard,
+    deleteCard,
+    getCurrentPeriod,
+    getNextPaymentDate,
+    getCardTransactions,
+    registerPayment,
+    getCardPayments,
+    refetch: fetchCards,
+  }
+}
