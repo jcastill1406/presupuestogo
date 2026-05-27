@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useTransactions } from '../hooks/useTransactions'
 import { useAccounts } from '../hooks/useAccounts'
 import { useCategories } from '../hooks/useCategories'
+import { useCreditCards } from '../hooks/useCreditCards'
 import TransactionModal from './TransactionModal'
 import { supabase } from '../lib/supabase'
 import type { Transaction } from '../types/database'
@@ -17,13 +18,18 @@ function TransactionDetail({ t, onClose, onDelete, onSaved, userId }: {
   const [error, setError] = useState('')
   const { accounts } = useAccounts(userId)
   const { expenseCategories, incomeCategories } = useCategories(userId)
+  const { cards } = useCreditCards(userId)
   const categories = t.type === 'income' ? incomeCategories : expenseCategories
+
+  const hasCreditCard = !!(t as any).credit_card_id
+  const [useCreditCard, setUseCreditCard] = useState(hasCreditCard)
 
   const [form, setForm] = useState({
     amount: String(t.amount),
     date: t.date,
     description: t.description || '',
     account_id: t.account_id || '',
+    credit_card_id: (t as any).credit_card_id || '',
     category_id: t.category_id || '',
     notes: t.notes || '',
     location: t.location || '',
@@ -46,7 +52,8 @@ function TransactionDetail({ t, onClose, onDelete, onSaved, userId }: {
         amount: parseFloat(form.amount),
         date: form.date,
         description: form.description || null,
-        account_id: form.account_id || null,
+        account_id: useCreditCard ? null : form.account_id || null,
+        credit_card_id: useCreditCard ? form.credit_card_id || null : null,
         category_id: form.category_id || null,
         notes: form.notes || null,
         location: form.location || null,
@@ -83,29 +90,56 @@ function TransactionDetail({ t, onClose, onDelete, onSaved, userId }: {
 
         <div style={{ padding:18, overflowY:'auto', flex:1 }}>
           {editing ? (
-            /* Modo edición */
             <div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
                 <div>
                   <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Monto (₡)</label>
-                  <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} style={inp} />
+                  <input inputMode="decimal" value={form.amount} onChange={e => set('amount', e.target.value)} style={inp} />
                 </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Fecha</label>
                   <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={inp} />
                 </div>
               </div>
+
               <div style={{ marginBottom:10 }}>
                 <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Descripción</label>
                 <input value={form.description} onChange={e => set('description', e.target.value)} placeholder="Descripción" style={inp} />
               </div>
+
+              {/* Toggle cuenta vs tarjeta - solo para gastos */}
+              {t.type === 'expense' && cards.length > 0 && (
+                <div style={{ display:'flex', gap:4, background:'var(--bg3)', borderRadius:8, padding:3, marginBottom:10 }}>
+                  <div onClick={() => setUseCreditCard(false)}
+                    style={{ flex:1, padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12, fontWeight:700, background: !useCreditCard?'var(--accent)':'transparent', color: !useCreditCard?'#fff':'var(--text2)', textAlign:'center' }}>
+                    🏦 Cuenta
+                  </div>
+                  <div onClick={() => setUseCreditCard(true)}
+                    style={{ flex:1, padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12, fontWeight:700, background: useCreditCard?'var(--accent)':'transparent', color: useCreditCard?'#fff':'var(--text2)', textAlign:'center' }}>
+                    💳 Tarjeta
+                  </div>
+                </div>
+              )}
+
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
                 <div>
-                  <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Cuenta</label>
-                  <select value={form.account_id} onChange={e => set('account_id', e.target.value)} style={{ ...inp, appearance:'none' }}>
-                    <option value="">Sin cuenta</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
+                  {useCreditCard && t.type === 'expense' ? (
+                    <>
+                      <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Tarjeta</label>
+                      <select value={form.credit_card_id} onChange={e => set('credit_card_id', e.target.value)} style={{ ...inp, appearance:'none' }}>
+                        <option value="">Seleccionar...</option>
+                        {cards.map(c => <option key={c.id} value={c.id}>{c.name} •••{c.last_four}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Cuenta</label>
+                      <select value={form.account_id} onChange={e => set('account_id', e.target.value)} style={{ ...inp, appearance:'none' }}>
+                        <option value="">Sin cuenta</option>
+                        {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Categoría</label>
@@ -115,6 +149,7 @@ function TransactionDetail({ t, onClose, onDelete, onSaved, userId }: {
                   </select>
                 </div>
               </div>
+
               <div style={{ marginBottom:10 }}>
                 <label style={{ fontSize:11, fontWeight:700, color:'var(--text2)', display:'block', marginBottom:4 }}>Lugar</label>
                 <input value={form.location} onChange={e => set('location', e.target.value)} placeholder="Lugar" style={inp} />
@@ -138,7 +173,6 @@ function TransactionDetail({ t, onClose, onDelete, onSaved, userId }: {
               {error && <div style={{ marginTop:10, padding:'8px 12px', background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:8, fontSize:12, color:'var(--red)' }}>{error}</div>}
             </div>
           ) : (
-            /* Modo detalle */
             <div>
               <div style={{ textAlign:'center', padding:'20px 0 24px', borderBottom:'1px solid var(--border)', marginBottom:8 }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', marginBottom:6 }}>{typeLabel}</div>
