@@ -24,7 +24,6 @@ export function useTransactions(userId: string | undefined, month: number, year:
     const start = `${year}-${String(month).padStart(2, '0')}-01`
     const end = new Date(year, month, 0).toISOString().split('T')[0]
 
-    // Traer transacciones, cuentas y categorías por separado
     const [{ data: txData }, { data: accData }, { data: catData }] = await Promise.all([
       supabase
         .from('transactions')
@@ -32,7 +31,8 @@ export function useTransactions(userId: string | undefined, month: number, year:
         .eq('user_id', userId!)
         .gte('date', start)
         .lte('date', end)
-        .order('date', { ascending: false }),
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false }),
       supabase
         .from('accounts')
         .select('id, name, type')
@@ -42,7 +42,6 @@ export function useTransactions(userId: string | undefined, month: number, year:
         .select('id, name, icon, color'),
     ])
 
-    // Combinar los datos manualmente
     const enriched = (txData ?? []).map(t => ({
       ...t,
       account: accData?.find(a => a.id === t.account_id) ?? null,
