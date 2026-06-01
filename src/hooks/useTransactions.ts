@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useExchangeRate } from './useExchangeRate'
 import type { Transaction } from '../types/database'
 
 export function useTransactions(userId: string | undefined, month: number, year: number) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+  const { toCRC } = useExchangeRate()
 
   useEffect(() => {
     if (!userId) return
@@ -52,13 +54,14 @@ export function useTransactions(userId: string | undefined, month: number, year:
     setLoading(false)
   }
 
+  // Totales convertidos a CRC
   const totalIncome = transactions
     .filter(t => t.type === 'income' && !t.is_ignored)
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + toCRC(t.amount, (t as any).currency || 'CRC'), 0)
 
   const totalExpenses = transactions
     .filter(t => t.type === 'expense' && !t.is_ignored)
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + toCRC(t.amount, (t as any).currency || 'CRC'), 0)
 
   const savings = totalIncome - totalExpenses
 
