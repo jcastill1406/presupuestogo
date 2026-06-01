@@ -3,8 +3,14 @@ import { useAuth } from '../hooks/useAuth'
 import { useAccounts } from '../hooks/useAccounts'
 import { useTransactions } from '../hooks/useTransactions'
 import { useReminders } from '../hooks/useReminders'
+import { useExchangeRate } from '../hooks/useExchangeRate'
 
 const CRC = (n: number) => '₡' + Math.round(n).toLocaleString('es-CR')
+const USD = (n: number) => '$' + n.toFixed(2)
+
+function fmtAmount(amount: number, currency: string) {
+  return currency === 'USD' ? USD(amount) : CRC(amount)
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -14,6 +20,7 @@ export default function DashboardPage() {
   const { accounts, totalBalance } = useAccounts(user?.id)
   const { transactions, totalIncome, totalExpenses, savings } = useTransactions(user?.id, month, year)
   const { pending } = useReminders(user?.id)
+  const { toCRC, rate } = useExchangeRate()
   const name = user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Usuario'
   const savingsRate = totalIncome > 0 ? Math.round(savings / totalIncome * 100) : 0
 
@@ -24,6 +31,11 @@ export default function DashboardPage() {
       <div style={{ marginBottom:20 }}>
         <div style={{ fontSize:20, fontWeight:800, marginBottom:4 }}>Hola, {name} 👋</div>
         <div style={{ fontSize:13, color:'var(--text2)' }}>{months[month-1]} {year}</div>
+        {rate && (
+          <div style={{ fontSize:11, color:'var(--text3)', marginTop:4 }}>
+            💱 TC: ₡{rate.venta} · {rate.fuente}
+          </div>
+        )}
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16 }}>
@@ -89,24 +101,32 @@ export default function DashboardPage() {
             <div style={{ fontSize:13, marginBottom:4 }}>Sin movimientos este mes</div>
             <div style={{ fontSize:12 }}>Registra tu primer gasto o ingreso</div>
           </div>
-        ) : transactions.slice(0,6).map(t => (
-          <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:8, cursor:'pointer', transition:'background .15s' }}
-            onMouseOver={e => (e.currentTarget as HTMLElement).style.background='var(--bg3)'}
-            onMouseOut={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
-            <div style={{ width:34, height:34, borderRadius:8, background: t.type==='income' ? 'var(--green-bg)' : t.type==='transfer' ? 'var(--blue-bg)' : 'var(--red-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
-              {t.type==='income'?'📈':t.type==='transfer'?'🔄':'📉'}
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:12, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{t.description || t.category?.name || 'Sin descripción'}</div>
-              <div style={{ fontSize:10, color:'var(--text3)' }}>{t.account?.name} • {t.date}</div>
-            </div>
-            <div style={{ textAlign:'right' }}>
-              <div style={{ fontSize:13, fontWeight:700, color: t.type==='income' ? 'var(--green)' : 'var(--red)' }}>
-                {t.type==='income'?'+':'-'}{CRC(t.amount)}
+        ) : transactions.slice(0,6).map(t => {
+          const cur = (t as any).currency || 'CRC'
+          return (
+            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:8, cursor:'pointer', transition:'background .15s' }}
+              onMouseOver={e => (e.currentTarget as HTMLElement).style.background='var(--bg3)'}
+              onMouseOut={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
+              <div style={{ width:34, height:34, borderRadius:8, background: t.type==='income' ? 'var(--green-bg)' : t.type==='transfer' ? 'var(--blue-bg)' : 'var(--red-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
+                {t.type==='income'?'📈':t.type==='transfer'?'🔄':'📉'}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{t.description || t.category?.name || 'Sin descripción'}</div>
+                <div style={{ fontSize:10, color:'var(--text3)' }}>{t.account?.name} • {t.date}</div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontSize:13, fontWeight:700, color: t.type==='income' ? 'var(--green)' : 'var(--red)' }}>
+                  {t.type==='income'?'+':'-'}{fmtAmount(t.amount, cur)}
+                </div>
+                {cur === 'USD' && (
+                  <div style={{ fontSize:9, color:'var(--text3)' }}>
+                    ≈ {CRC(toCRC(t.amount, cur))}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
